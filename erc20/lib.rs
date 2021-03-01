@@ -16,6 +16,8 @@ mod erc20 {
         total_supply: Lazy<Balance>,
         /// Mapping from owner to number of owned token.
         balances: StorageHashMap<AccountId, Balance>,
+        /// Owner of the contract
+        owner: AccountId,
         /// Mapping of the token amount which an account is allowed to withdraw
         /// from another account.
         allowances: StorageHashMap<(AccountId, AccountId), Balance>,
@@ -52,6 +54,10 @@ mod erc20 {
         InsufficientBalance,
         /// Returned if not enough allowance to fulfill a request is available.
         InsufficientAllowance,
+        /// Retuured if the value is invalid
+        InvalidValue,
+        /// Retuured if the caller is not owner
+        InvalidCaller,
     }
 
     /// The ERC-20 result type.
@@ -65,6 +71,7 @@ mod erc20 {
             let mut balances = StorageHashMap::new();
             balances.insert(caller, initial_supply);
             let instance = Self {
+                owner: caller,
                 total_supply: Lazy::new(initial_supply),
                 balances,
                 allowances: StorageHashMap::new(),
@@ -186,6 +193,97 @@ mod erc20 {
             self.env().emit_event(Transfer {
                 from: Some(from),
                 to: Some(to),
+                value,
+            });
+            Ok(())
+        }
+
+        /// Mint `value` amount of tokens to account `to`.
+         /// # Errors
+         ///
+         /// Returns `InvalidValue` error if balance increase failed
+        #[ink(message)]
+        pub fn mint(
+            &mut self,
+            to: AccountId,
+            value: Balance,
+        ) -> Result<()> {
+            let caller = self.env().caller();
+            if caller != self.owner {
+                return Err(Error::InvalidCaller)
+            }
+            let balance_before = self.balance_of(to);
+            self.balances.insert(to, balance_before + value);
+            let balance_after = self.balance_of(to);
+            if balance_after < balance_before {
+                return Err(Error::InvalidValue)
+            }
+            self.total_supply = Lazy::new(self.total_supply() + value);
+            self.env().emit_event(Transfer {
+                from: None,
+                to: Some(to),
+                value,
+            });
+            Ok(())
+        }
+
+        /// Burn `value` amount of tokens from the caller's account.
+        ///
+        /// On success a `Transfer` event is emitted.
+        ///
+        /// # Errors
+        ///
+        /// Returns `InsufficientBalance` error if there are not enough tokens on
+        /// the caller's account balance.
+        #[ink(message)]
+        pub fn burn(
+            &mut self,
+            value: Balance,
+        ) -> Result<()> {
+            let caller = self.env().caller();
+            let from_balance = self.balance_of(caller);
+            if from_balance < value {
+                return Err(Error::InsufficientBalance);
+            }
+            self.balances.insert(caller, from_balance - value);
+            self.total_supply = Lazy::new(self.total_supply() - value);
+            self.env().emit_event(Transfer {
+                from: Some(caller),
+                to: None,
+                value,
+            });
+            Ok(())
+        }
+
+        /// Burn `value` amount of tokens from the from's account.
+        ///
+        /// On success a `Transfer` event is emitted.
+        ///
+        /// # Errors
+        ///
+        /// Returns `InsufficientBalance` error if there are not enough tokens on
+        /// the from's account balance.
+        #[ink(message)]
+        pub fn burn_from(
+            &mut self,
+            from: AccountId,
+            value: Balance,
+        ) -> Result<()> {
+            let caller = self.env().caller();
+            let allowance = self.allowance(from, caller);
+            if allowance < value {
+                return Err(Error::InsufficientAllowance);
+            }
+            let from_balance = self.balance_of(from);
+            if from_balance < value {
+                return Err(Error::InsufficientBalance);
+            }
+            self.allowances.insert((from, caller), allowance - value);
+            self.balances.insert(caller, from_balance - value);
+            self.total_supply = Lazy::new(self.total_supply() - value);
+            self.env().emit_event(Transfer {
+                from: Some(caller),
+                to: None,
                 value,
             });
             Ok(())

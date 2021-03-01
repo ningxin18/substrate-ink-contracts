@@ -46,6 +46,14 @@ mod erc20 {
         value: Balance,
     }
 
+    #[ink(event)]
+    pub struct ChangeOwner {
+        #[ink(topic)]
+        from: AccountId,
+        #[ink(topic)]
+        to: AccountId,
+    }
+
     /// The ERC-20 error types.
     #[derive(Debug, PartialEq, Eq, scale::Encode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
@@ -285,6 +293,31 @@ mod erc20 {
                 from: Some(caller),
                 to: None,
                 value,
+            });
+            Ok(())
+        }
+
+        /// Change_owner `value` amount of tokens from the from's account.
+        ///
+        /// On success a `Transfer` event is emitted.
+        ///
+        /// # Errors
+        ///
+        /// Returns `InsufficientBalance` error if there are not enough tokens on
+        /// the from's account balance.
+        #[ink(message)]
+        pub fn change_owner(
+            &mut self,
+            to: AccountId,
+        ) -> Result<()> {
+            let caller = self.env().caller();
+            if caller != self.owner {
+                return Err(Error::InvalidCaller)
+            }
+            self.owner = to;
+            self.env().emit_event(ChangeOwner {
+                from: Some(caller),
+                to: None,
             });
             Ok(())
         }

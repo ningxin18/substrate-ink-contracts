@@ -49,9 +49,9 @@ mod erc20 {
     #[ink(event)]
     pub struct ChangeOwner {
         #[ink(topic)]
-        from: AccountId,
+        from: Option<AccountId>,
         #[ink(topic)]
-        to: AccountId,
+        to: Option<AccountId>,
     }
 
     /// The ERC-20 error types.
